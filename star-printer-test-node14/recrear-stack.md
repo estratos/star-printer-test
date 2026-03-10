@@ -680,7 +680,7 @@ describe('Página de Login', () => {
 ```bash
 # Desde la raíz del proyecto
 npm run serve
-```
+```npm run serve
 
 La aplicación estará disponible en: http://localhost:8080
 
