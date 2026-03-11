@@ -89,6 +89,10 @@
       >
         <b-card-text>
           <pre class="text-white">{{ statusMessage }}</pre>
+          <div v-if="errorDetails" class="mt-2">
+            <strong>Error Details:</strong>
+            <pre class="text-white mt-1">{{ errorDetails }}</pre>
+          </div>
         </b-card-text>
       </b-card>
 
@@ -101,7 +105,35 @@
             :variant="item.success ? 'success' : 'danger'"
           >
             <md-icon>{{ item.success ? "check_circle" : "error" }}</md-icon>
-            {{ new Date(item.timestamp).toLocaleString() }} - {{ item.message }}
+            {{ new Date(item.timestamp).toLocaleString() }} - 
+            <span v-if="item.errorCode">[{{ item.errorCode }}] </span>
+            {{ item.message }}
+          </b-list-group-item>
+        </b-list-group>
+      </b-card>
+
+      <!-- Guía de solución de problemas -->
+      <b-card title="Troubleshooting Guide" class="mt-4" bg-variant="light">
+        <b-list-group>
+          <b-list-group-item>
+            <strong>Error Code: 2F8C000000000000000000060000000000</strong>
+            <p class="mt-2 mb-0">Este error puede indicar:</p>
+            <ul class="mt-1">
+              <li>La impresora no está conectada o encendida</li>
+              <li>La URL de la impresora es incorrecta</li>
+              <li>La impresora no soporta el formato de comando enviado</li>
+              <li>Problema de conectividad de red</li>
+            </ul>
+          </b-list-group-item>
+          <b-list-group-item>
+            <strong>Soluciones recomendadas:</strong>
+            <ol class="mt-1">
+              <li>Verifica que la impresora esté encendida y conectada a la red</li>
+              <li>Confirma la URL correcta de la impresora (usualmente http://[IP]:8001/StarWebPRNT/SendMessage)</li>
+              <li>Prueba con http en lugar de https</li>
+              <li>Verifica que el firewall no esté bloqueando el puerto 8001</li>
+              <li>Reinicia la impresora y el servidor web</li>
+            </ol>
           </b-list-group-item>
         </b-list-group>
       </b-card>
@@ -129,6 +161,7 @@ export default {
       statusVariant: "info",
       loading: false,
       urlError: "",
+      errorDetails: null,
       paperWidthOptions: [
         { value: "inch2", text: "2 Inch (203dpi/384dot)" },
         {
@@ -180,10 +213,8 @@ export default {
         return false;
       }
 
-      // Validación básica de URL
       try {
         const url = new URL(this.printerUrl);
-        // Aceptar http y https
         if (url.protocol !== "http:" && url.protocol !== "https:") {
           this.urlError = "URL must start with http:// or https://";
           return false;
@@ -197,8 +228,45 @@ export default {
       }
     },
 
+    interpretStarErrorCode(errorCode) {
+      if (!errorCode || errorCode === "OK") return null;
+
+      const errorMap = {
+        "2F8C000000000000000000060000000000": {
+          message: "Printer not connected or offline",
+          suggestion: "Check printer connection and power. Verify the printer is on and connected to the network.",
+        },
+        "2F8C000000000000000000030000000000": {
+          message: "Printer cover open",
+          suggestion: "Close printer cover and try again.",
+        },
+        "2F8C000000000000000000050000000000": {
+          message: "Out of paper",
+          suggestion: "Load paper and try again.",
+        },
+        "2F8C000000000000000000080000000000": {
+          message: "Printer buffer full",
+          suggestion: "Wait a moment and try again.",
+        },
+        "2F8C000000000000000000040000000000": {
+          message: "Printer offline",
+          suggestion: "Check printer status and bring it online.",
+        },
+        "2F8C000000000000000000070000000000": {
+          message: "Printer error - general",
+          suggestion: "Check printer for paper jams or other mechanical issues.",
+        },
+      };
+
+      return (
+        errorMap[errorCode] || {
+          message: "Unknown printer error",
+          suggestion: "Check printer status and connection. Verify the printer model supports WebPRNT.",
+        }
+      );
+    },
+
     async sendPrintTest() {
-      // Validar URL antes de enviar
       if (!this.validateUrl()) {
         this.statusMessage = "Please enter a valid printer URL";
         this.statusVariant = "warning";
@@ -210,9 +278,9 @@ export default {
       this.statusMessage = "Sending print request...";
       this.statusVariant = "info";
       this.statusHeader = "Status";
+      this.errorDetails = null;
 
       try {
-        // Verificar librerías
         if (
           typeof window.StarWebPrintBuilder === "undefined" ||
           typeof window.StarWebPrintTrader === "undefined"
@@ -225,73 +293,70 @@ export default {
         const builder = new window.StarWebPrintBuilder();
         let request = "";
 
-        // Construir recibo de prueba
+        // Construir recibo de prueba - versión simplificada para mejor compatibilidad
         request += builder.createInitializationElement();
-        request += builder.createTextElement({ characterspace: 0 });
 
-        // Encabezado centrado
+        request += builder.createTextElement({
+          data: "\n",
+        });
+
         request += builder.createAlignmentElement({ position: "center" });
         request += builder.createTextElement({
-          data: "Star WebPRNT Test Print\n",
+          data: "STAR WEBPRNT TEST\n",
           emphasized: true,
         });
         request += builder.createTextElement({
-          data: "Hello from Vue.js!\n",
-        });
-
-        // Timestamp
-        const timestamp = new Date().toLocaleString();
-        request += builder.createTextElement({
-          data: timestamp + "\n",
+          data: "================\n",
         });
 
         request += builder.createAlignmentElement({ position: "left" });
-
-        // Items del recibo
-        request += builder.createTextElement({ data: "\n" });
         request += builder.createTextElement({
-          data: "Test Item               $10.00\n",
+          data: "\n",
+        });
+
+        request += builder.createTextElement({
+          data: "Printer Test\n",
         });
         request += builder.createTextElement({
-          data: "Another Item            $20.00\n",
+          data: "Date: " + new Date().toLocaleString() + "\n",
         });
         request += builder.createTextElement({
-          emphasized: true,
-          data: "Total                  $30.00\n",
+          data: "Paper Width: " + this.paperWidth + "\n",
         });
-        request += builder.createTextElement({ data: "\n" });
+        request += builder.createTextElement({
+          data: "Status: Test Print\n",
+        });
 
-        // Código de barras (opcional, con manejo de errores)
-        try {
-          request += builder.createBarcodeElement({
-            data: "123456789012",
-            symbology: "code128",
-            height: 60,
-            width: 2,
-            hri: true,
-          });
-        } catch (barcodeError) {
-          console.warn("Barcode not supported:", barcodeError);
-          request += builder.createTextElement({
-            data: "Barcode: 123456789012\n",
-          });
-        }
+        request += builder.createTextElement({
+          data: "\n",
+        });
+        request += builder.createTextElement({
+          data: "Thank you for using\n",
+        });
+        request += builder.createTextElement({
+          data: "Star WebPRNT SDK\n",
+        });
 
-        request += builder.createTextElement({ data: "\n\n" });
+        request += builder.createTextElement({
+          data: "\n",
+        });
+
         request += builder.createCutPaperElement({ feed: true });
 
-        // Crear trader y enviar
+        console.log("Print request built:", request);
+
         const trader = new window.StarWebPrintTrader({
           url: this.printerUrl,
           timeout: 30000,
         });
 
-        // Promesa para manejar la respuesta
         const printPromise = new Promise((resolve, reject) => {
           trader.onReceive = (response) => {
+            console.log("Printer response:", response);
             resolve(response);
           };
           trader.onError = (error) => {
+            console.error("Printer error:", error);
             reject(error);
           };
         });
@@ -299,9 +364,6 @@ export default {
         trader.sendMessage({ request });
         const response = await printPromise;
         this.handlePrintResponse(response, request);
-
-        // Logging no crítico
-        this.logPrintAttempt(request.length);
       } catch (error) {
         this.handlePrintError(error);
       } finally {
@@ -314,30 +376,48 @@ export default {
         response.traderSuccess === "OK" || response.traderSuccess === true;
 
       let msg = "";
+      let errorInfo = null;
+
       if (success) {
         msg = "✅ Print successful!\n";
-        msg += `Status: ${response.traderStatus || "OK"}`;
+        if (response.traderStatus) {
+          msg += `Status: ${response.traderStatus}`;
+        }
         this.statusVariant = "success";
         this.statusHeader = "Success";
       } else {
         msg = "❌ Print failed\n";
-        msg += `Status: ${response.traderStatus || "Unknown error"}`;
+        
+        if (response.traderStatus) {
+          const errorCode = response.traderStatus;
+          errorInfo = this.interpretStarErrorCode(errorCode);
+          
+          if (errorInfo) {
+            msg += `Error: ${errorInfo.message}\n`;
+            msg += `Code: ${errorCode}`;
+            this.errorDetails = errorInfo.suggestion;
+          } else {
+            msg += `Status: ${errorCode}`;
+          }
+        } else {
+          msg += "Unknown printer error";
+        }
+        
         this.statusVariant = "danger";
         this.statusHeader = "Error";
       }
 
       this.statusMessage = msg;
 
-      // Guardar en historial
       this.$store.dispatch("addPrintHistory", {
         success,
         message: msg,
+        errorCode: response.traderStatus,
         timestamp: new Date().toISOString(),
         printerUrl: this.printerUrl,
         requestSize: requestData.length,
       });
 
-      // Mostrar toast si está disponible
       if (this.$bvToast) {
         this.$bvToast.toast(msg, {
           title: success ? "Print Success" : "Print Error",
@@ -362,7 +442,6 @@ export default {
       this.statusVariant = "danger";
       this.statusHeader = "Error";
 
-      // Guardar error en historial
       this.$store.dispatch("addPrintHistory", {
         success: false,
         message: errorMsg,
@@ -370,7 +449,6 @@ export default {
         printerUrl: this.printerUrl,
       });
 
-      // Mostrar toast si está disponible
       if (this.$bvToast) {
         this.$bvToast.toast(errorMsg, {
           title: "Print Error",
@@ -389,9 +467,7 @@ export default {
             requestSize,
             timestamp: new Date().toISOString(),
           })
-          .catch(() => {
-            // Ignorar errores de logging
-          });
+          .catch(() => {});
       } catch (error) {
         console.log("Logging failed (non-critical):", error.message);
       }
@@ -414,12 +490,18 @@ export default {
   min-height: 100vh;
   background-color: #f5f5f5;
   padding-bottom: 2rem;
+  font-family: "Arial", sans-serif;
 
   .md-card {
     width: 100%;
     margin: 0;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 
     .md-card-header {
+      background-color: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      
       .md-icon {
         color: #3f51b5;
       }
@@ -434,15 +516,18 @@ export default {
     background-color: rgba(255, 255, 255, 0.1);
     padding: 10px;
     border-radius: 4px;
+    font-family: "Courier New", monospace;
   }
 
   .b-list-group-item {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
+    padding: 12px 15px;
 
     .md-icon {
       margin-right: 10px;
       font-size: 20px;
+      flex-shrink: 0;
     }
   }
 
@@ -451,11 +536,47 @@ export default {
       padding: 0 15px;
     }
   }
+
+  // Estilos para las tarjetas de troubleshooting
+  .card.bg-light {
+    background-color: #f8f9fa !important;
+    
+    .list-group-item {
+      background-color: transparent;
+      border-color: #dee2e6;
+      
+      strong {
+        color: #495057;
+      }
+      
+      ul, ol {
+        margin-bottom: 0;
+        padding-left: 20px;
+        
+        li {
+          margin-bottom: 5px;
+          color: #6c757d;
+          
+          &:last-child {
+            margin-bottom: 0;
+          }
+        }
+      }
+    }
+  }
 }
 
 .md-button.md-primary.md-raised {
   width: 100%;
   margin: 1rem 0;
+  padding: 12px 24px;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+
+  &:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  }
 
   &:disabled {
     opacity: 0.6;
@@ -465,5 +586,41 @@ export default {
 
 .text-white {
   color: #fff !important;
+}
+
+// Estilos para los diferentes tipos de cards de estado
+.b-card {
+  &[bg-variant="success"] {
+    background-color: #28a745 !important;
+  }
+  
+  &[bg-variant="danger"] {
+    background-color: #dc3545 !important;
+  }
+  
+  &[bg-variant="warning"] {
+    background-color: #ffc107 !important;
+  }
+  
+  &[bg-variant="info"] {
+    background-color: #17a2b8 !important;
+  }
+}
+
+// Animación de carga
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.md-button.md-primary.md-raised:active:not(:disabled) {
+  animation: pulse 0.3s ease;
 }
 </style>
