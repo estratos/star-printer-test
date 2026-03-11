@@ -15,12 +15,24 @@ import 'vue-material/dist/vue-material.min.css'
 import 'vue-material/dist/theme/default.css'
 
 // Vee-Validate
-import { ValidationProvider, ValidationObserver, extend } from 'vee-validate'
+import { ValidationProvider, ValidationObserver, extend, localize } from 'vee-validate'
 import * as rules from 'vee-validate/dist/rules'
+import es from 'vee-validate/dist/locale/es.json'
+import en from 'vee-validate/dist/locale/en.json'
 
-// Registrar reglas de validación
+// Registrar TODAS las reglas de validación
 Object.keys(rules).forEach(rule => {
   extend(rule, rules[rule])
+})
+
+// Configurar mensajes en español (opcional)
+localize('es', es)
+localize('en', en)
+
+// Si quieres mensajes personalizados para 'url'
+extend('url', {
+  ...rules.url,
+  message: 'The {_field_} field must be a valid URL'
 })
 
 // Registrar plugins
