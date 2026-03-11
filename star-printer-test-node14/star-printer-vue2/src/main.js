@@ -14,32 +14,14 @@ import VueMaterial from 'vue-material'
 import 'vue-material/dist/vue-material.min.css'
 import 'vue-material/dist/theme/default.css'
 
-// Vee-Validate
-import { ValidationProvider, ValidationObserver, extend, localize } from 'vee-validate'
-import * as rules from 'vee-validate/dist/rules'
-import es from 'vee-validate/dist/locale/es.json'
-import en from 'vee-validate/dist/locale/en.json'
-
-// Registrar TODAS las reglas de validación
-Object.keys(rules).forEach(rule => {
-  extend(rule, rules[rule])
-})
-
-// Configurar mensajes en español (opcional)
-localize('es', es)
-localize('en', en)
-
-// Si quieres mensajes personalizados para 'url'
-extend('url', {
-  ...rules.url,
-  message: 'The {_field_} field must be a valid URL'
-})
+// Vee-Validate - SOLO los componentes, sin reglas
+import { ValidationProvider, ValidationObserver } from 'vee-validate'
 
 // Registrar plugins
 Vue.use(BootstrapVue)
 Vue.use(VueMaterial)
 
-// Registrar componentes globales de vee-validate
+// Registrar componentes globales de vee-validate (solo los wrappers)
 Vue.component('ValidationProvider', ValidationProvider)
 Vue.component('ValidationObserver', ValidationObserver)
 

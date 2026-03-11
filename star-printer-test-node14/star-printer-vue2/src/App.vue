@@ -39,15 +39,20 @@
         <md-card-content>
           <p class="mb-4">This is a simple Vue.js app to test printing with Star WebPRNT SDK.</p>
           
-          <ValidationObserver v-slot="{ invalid }">
-            <!-- Printer URL -->
-            <ValidationProvider name="printerUrl" rules="required|url" v-slot="{ errors }">
-              <md-field :class="{'md-invalid': errors.length}">
-                <label>Printer URL</label>
-                <md-input v-model="printerUrl" type="url" placeholder="http://localhost:8001/StarWebPRNT/SendMessage"></md-input>
-                <span class="md-error">{{ errors[0] }}</span>
-              </md-field>
-            </ValidationProvider>
+          <!-- Validación manual -->
+          <div>
+            <!-- Printer URL con validación manual -->
+            <md-field :class="{'md-invalid': urlError}">
+              <label>Printer URL</label>
+              <md-input 
+                v-model="printerUrl" 
+                type="url" 
+                placeholder="http://localhost:8001/StarWebPRNT/SendMessage" 
+                @input="validateUrl"
+                @blur="validateUrl"
+              ></md-input>
+              <span class="md-error" v-if="urlError">{{ urlError }}</span>
+            </md-field>
 
             <!-- Paper Width Selector con Bootstrap -->
             <b-form-group :label="$t('paperWidth')" label-for="paperWidth">
@@ -63,12 +68,12 @@
             <md-button 
               class="md-primary md-raised md-large" 
               @click="sendPrintTest"
-              :disabled="invalid || loading"
+              :disabled="!printerUrl || urlError || loading"
             >
               <md-icon>print</md-icon>
               {{ loading ? 'Printing...' : 'Send Print Test' }}
             </md-button>
-          </ValidationObserver>
+          </div>
         </md-card-content>
       </md-card>
 
@@ -85,7 +90,7 @@
         </b-card-text>
       </b-card>
 
-      <!-- Historial de impresiones (usando Vuex) -->
+      <!-- Historial de impresiones -->
       <b-card title="Print History" class="mt-4" v-if="printHistory.length > 0">
         <b-list-group>
           <b-list-group-item 
@@ -103,6 +108,7 @@
 </template>
 
 <script>
+// Importar SOLO los componentes, sin reglas
 import { ValidationObserver, ValidationProvider } from 'vee-validate'
 import axios from './plugins/axios'
 import { mapGetters, mapState } from 'vuex'
@@ -110,6 +116,7 @@ import { mapGetters, mapState } from 'vuex'
 export default {
   name: 'App',
   components: {
+    // Registrar los componentes aunque no los usemos en el template
     ValidationObserver,
     ValidationProvider
   },
@@ -121,6 +128,7 @@ export default {
       statusHeader: 'Status',
       statusVariant: 'info',
       loading: false,
+      urlError: '',
       paperWidthOptions: [
         { value: 'inch2', text: '2 Inch (203dpi/384dot)' },
         { value: 'inch3', text: '3 Inch (203dpi/576dot) / 2 Inch (300dpi/576dot)' },
@@ -138,10 +146,8 @@ export default {
     }
   },
   mounted() {
-    // Verificar que las librerías de Star estén disponibles
     this.checkStarLibraries()
     
-    // Si no hay usuario autenticado, crear uno de prueba para la demo
     if (!this.isAuthenticated) {
       this.$store.dispatch('login', {
         email: 'test@example.com',
@@ -151,10 +157,9 @@ export default {
   },
   methods: {
     checkStarLibraries() {
-      // Verificar si las librerías están disponibles globalmente
       if (typeof window.StarWebPrintBuilder === 'undefined' || typeof window.StarWebPrintTrader === 'undefined') {
-        console.warn('Star WebPRNT libraries not loaded. Make sure to include them in public/index.html')
-        this.statusMessage = 'Warning: Star WebPRNT libraries not detected. Please ensure they are properly loaded in public/index.html'
+        console.warn('Star WebPRNT libraries not loaded')
+        this.statusMessage = 'Warning: Star WebPRNT libraries not detected. Please ensure they are loaded in public/index.html'
         this.statusVariant = 'warning'
         this.statusHeader = 'Warning'
       } else {
@@ -162,14 +167,44 @@ export default {
       }
     },
     
+    validateUrl() {
+      if (!this.printerUrl || this.printerUrl.trim() === '') {
+        this.urlError = 'Printer URL is required'
+        return false
+      }
+      
+      // Validación básica de URL
+      try {
+        const url = new URL(this.printerUrl)
+        // Aceptar http y https
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+          this.urlError = 'URL must start with http:// or https://'
+          return false
+        }
+        this.urlError = ''
+        return true
+      } catch {
+        this.urlError = 'Must be a valid URL (e.g., http://localhost:8001/...)'
+        return false
+      }
+    },
+    
     async sendPrintTest() {
+      // Validar URL antes de enviar
+      if (!this.validateUrl()) {
+        this.statusMessage = 'Please enter a valid printer URL'
+        this.statusVariant = 'warning'
+        this.statusHeader = 'Validation Error'
+        return
+      }
+
       this.loading = true
       this.statusMessage = 'Sending print request...'
       this.statusVariant = 'info'
       this.statusHeader = 'Status'
 
       try {
-        // Verificar que las librerías existen en el objeto window
+        // Verificar librerías
         if (typeof window.StarWebPrintBuilder === 'undefined' || typeof window.StarWebPrintTrader === 'undefined') {
           throw new Error('Star WebPRNT libraries not loaded. Please check public/index.html')
         }
@@ -177,11 +212,11 @@ export default {
         const builder = new window.StarWebPrintBuilder()
         let request = ''
 
-        // Build a simple test receipt
+        // Construir recibo de prueba
         request += builder.createInitializationElement()
         request += builder.createTextElement({ characterspace: 0 })
 
-        // Center alignment for header
+        // Encabezado centrado
         request += builder.createAlignmentElement({ position: 'center' })
         request += builder.createTextElement({ 
           data: 'Star WebPRNT Test Print\n',
@@ -191,7 +226,7 @@ export default {
           data: 'Hello from Vue.js!\n' 
         })
         
-        // Add timestamp
+        // Timestamp
         const timestamp = new Date().toLocaleString()
         request += builder.createTextElement({ 
           data: timestamp + '\n' 
@@ -199,7 +234,7 @@ export default {
         
         request += builder.createAlignmentElement({ position: 'left' })
 
-        // Sample receipt items
+        // Items del recibo
         request += builder.createTextElement({ data: '\n' })
         request += builder.createTextElement({ data: 'Test Item               $10.00\n' })
         request += builder.createTextElement({ data: 'Another Item            $20.00\n' })
@@ -209,53 +244,44 @@ export default {
         })
         request += builder.createTextElement({ data: '\n' })
 
-        // Intentar agregar barcode con manejo de errores
+        // Código de barras (opcional, con manejo de errores)
         try {
-          // Intentar con diferentes formatos según la versión del SDK
-          const barcodeData = '123456789012'
-          
-          // Formato estándar
           request += builder.createBarcodeElement({
-            data: barcodeData,
+            data: '123456789012',
             symbology: 'code128',
             height: 60,
             width: 2,
             hri: true
           })
         } catch (barcodeError) {
-          console.warn('Error adding barcode:', barcodeError)
-          // Si falla el barcode, agregar texto simple
+          console.warn('Barcode not supported:', barcodeError)
           request += builder.createTextElement({ data: 'Barcode: 123456789012\n' })
         }
 
         request += builder.createTextElement({ data: '\n\n' })
         request += builder.createCutPaperElement({ feed: true })
 
-        // Crear y configurar el trader
+        // Crear trader y enviar
         const trader = new window.StarWebPrintTrader({ 
           url: this.printerUrl,
           timeout: 30000
         })
 
-        // Crear una promesa para manejar la respuesta
+        // Promesa para manejar la respuesta
         const printPromise = new Promise((resolve, reject) => {
           trader.onReceive = (response) => {
             resolve(response)
           }
-
           trader.onError = (error) => {
             reject(error)
           }
         })
 
-        // Enviar mensaje
         trader.sendMessage({ request })
-
-        // Esperar la respuesta
         const response = await printPromise
         this.handlePrintResponse(response, request)
-
-        // Registrar intento (solo si fue exitoso)
+        
+        // Logging no crítico
         this.logPrintAttempt(request.length)
 
       } catch (error) {
@@ -342,9 +368,8 @@ export default {
           paperWidth: this.paperWidth,
           requestSize,
           timestamp: new Date().toISOString()
-        }).catch(err => {
-          // Ignorar errores de logging (no críticos)
-          console.log('Logging endpoint not available:', err.message)
+        }).catch(() => {
+          // Ignorar errores de logging
         })
       } catch (error) {
         console.log('Logging failed (non-critical):', error.message)
@@ -415,11 +440,6 @@ export default {
     opacity: 0.6;
     cursor: not-allowed;
   }
-}
-
-// Estilos para los toasts de Bootstrap
-.mt-4 {
-  margin-top: 1.5rem !important;
 }
 
 .text-white {
