@@ -1,5 +1,3 @@
-Te ayudo a crear un documento completo con las instrucciones para recrear el stack tecnológico y una aplicación de ejemplo en Vue 2 con Node 14 en Windows.
-
 # 📋 Documento de Instalación y Configuración
 ## Stack Vue 2 Legacy - Node 14 en Windows
 
